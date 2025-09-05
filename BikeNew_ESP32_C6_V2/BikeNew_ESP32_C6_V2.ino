@@ -1,0 +1,429 @@
+//#include <WiFi.h>
+#include <WiFiMulti.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <Wire.h>
+#include <SFE_BMP180.h>
+
+SFE_BMP180 bmp180;
+float alt = 155.0; // Altitude of current location in meters
+float Po = 1015.0;
+#include <Adafruit_GFX.h>
+//#include <Adafruit_SSD1306.h> //OLED display library
+#include <Adafruit_SSD1305.h> //OLED display library
+#include <Fonts/FreeMono9pt7b.h>
+#include <Fonts/FreeSans18pt7b.h>
+
+#include <RTClib.h>
+
+#include <EEPROM.h> //This library allows reading and writing to the EEPROM
+#define OLED_RESET -1
+
+
+const char *ssid2 = "1"; // your wifi name
+const char *pw2   = "1";// your wifi password
+
+const char *ssid1 = "1"; // your wifi name
+const char *pw1   = "1";// your wifi password
+
+const char *ssid3 = "1"; // your wifi name
+const char *pw3   = "1";// your wifi password
+
+const char *ssid4 = "PHONE"; // your wifi name
+const char *pw4   = "12345678";// your wifi password
+
+const long timezoneOffset = 1 * 60 * 60; // ? hours * 60 * 60
+
+//ESP32Time rtc(0);
+RTC_DS3231 rtc;
+char t[32];
+
+//Buttons
+
+const int buttonPinUp = 16;
+int buttonUpState = 0;
+int upBtn = 1;
+const int buttonPinDown = 19;
+int buttonDownState = 0;
+int downBtn = 2;
+const int buttonPinSelect = 17;
+int buttonSelectState = 0;
+int selectBtn = 3;
+
+const char          *ntpServer  = "uk.pool.ntp.org"; // change it to local NTP server if needed
+const unsigned long updateDelay = 900000;         // update time every 15 min
+const unsigned long retryDelay  = 5000;           // retry 5 sec later if time query failed
+const String        weekDays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+unsigned long lastUpdatedTime = updateDelay * -1;
+unsigned int  second_prev = 0;
+bool          colon_switch = false;
+bool          wifiConnected = false;
+bool          timeSet;
+
+int           CurrentScreen = 0; //Home default
+
+bool          timeAlterMode = false; //default
+int           timeAlterPosition = 0; //0=hour 1=min
+
+WiFiMulti WiFiMulti; 
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, ntpServer);
+//Adafruit_SSD1306 display(128, 32, &Wire, OLED_RESET);
+Adafruit_SSD1305 display(128, 32, &Wire, OLED_RESET);
+
+
+#define HONDA_2_HEIGHT 32
+#define HONDA_2_WIDTH 128
+ 
+const unsigned char Honda_2_bmp [] PROGMEM = {
+//static const unsigned char Honda_2_bmp[] u8x8_PROGMEM= {
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x1C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x7C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x01, 0xF8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x0F, 0xF8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x3F, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x01, 0xFF, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x07, 0xFF, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x1F, 0xFF, 0xE0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0xFF, 0xFF, 0xC3, 0xFF, 0x7F, 0xE3, 0xFF, 0xC7, 0xFE, 0x7F, 0xFF, 0xFF, 0x83, 0xFF, 0x00,
+0x03, 0xFF, 0xFF, 0xC3, 0xFF, 0x7F, 0xEF, 0xFF, 0xF7, 0xFE, 0x7F, 0xFF, 0xFF, 0xC3, 0xFF, 0x80,
+0x1F, 0xFF, 0xFF, 0x80, 0xFC, 0x0F, 0x9F, 0xC7, 0xF9, 0xFF, 0x1E, 0x1F, 0xFF, 0xE0, 0xFF, 0xC0,
+0x7F, 0xFF, 0xFF, 0x80, 0x7C, 0x0F, 0x9F, 0x81, 0xF9, 0xFF, 0x8E, 0x1F, 0x03, 0xF0, 0xFF, 0xC0,
+0x7F, 0xFF, 0xFC, 0x00, 0x7F, 0xFF, 0x9F, 0x80, 0xF9, 0xFF, 0xCE, 0x1F, 0x03, 0xF1, 0xE7, 0xE0,
+0x7F, 0xFF, 0xFE, 0x00, 0x7F, 0xFF, 0x9F, 0x00, 0xF9, 0xEF, 0xCE, 0x1F, 0x03, 0xF1, 0xFF, 0xF0,
+0x7F, 0xFF, 0xFC, 0x00, 0x7F, 0xFF, 0x9F, 0x80, 0xF9, 0xE7, 0xEE, 0x1F, 0x03, 0xF3, 0xFF, 0xF0,
+0x3F, 0xFF, 0xF0, 0x00, 0x7C, 0x0F, 0x9F, 0x81, 0xF9, 0xE7, 0xFE, 0x1F, 0x03, 0xF7, 0xFF, 0xF8,
+0x1F, 0xFF, 0x80, 0x00, 0xFC, 0x0F, 0x9F, 0xC3, 0xF9, 0xE3, 0xFE, 0x1F, 0x0F, 0xE7, 0x81, 0xFC,
+0x0F, 0xFF, 0xC0, 0x03, 0xFF, 0x7F, 0xEF, 0xFF, 0xF7, 0xF9, 0xFE, 0x7F, 0xFF, 0xFF, 0xC3, 0xFF,
+0x07, 0xFF, 0xF0, 0x03, 0xFF, 0x7F, 0xE7, 0xFF, 0xE7, 0xF9, 0xFE, 0x7F, 0xFF, 0xBF, 0xC3, 0xFF,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+}; 
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 32 // OLED display height, in pixels
+ 
+// ------------------- For i2c -------------------
+//// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+  
+
+void setup() {
+
+  Serial.begin(9600);
+  //Draw splash screen
+  yield();
+  display.begin(0x3C);
+  yield();
+  display.clearDisplay();
+
+  // init done
+  pinMode(buttonPinUp, INPUT);
+  pinMode(buttonPinDown, INPUT);
+  pinMode(buttonPinSelect, INPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+
+ 
+  display.drawBitmap(0,1, Honda_2_bmp, HONDA_2_WIDTH, HONDA_2_HEIGHT, 1);
+  display.display();
+  delay(5000);
+
+  drawTxtToDisplay(" Connecting --to Wifi--");
+
+  //Wire.begin();
+  rtc.begin();
+  bool success = bmp180.begin();
+
+  if (success) {
+    Serial.println("BMP180 init success");
+  }
+
+
+  
+  WiFiMulti.addAP(ssid1, pw1); // multiple ssid/pw can be added
+  WiFiMulti.addAP(ssid2, pw2); // multiple ssid/pw can be added
+  WiFiMulti.addAP(ssid3, pw3); // multiple ssid/pw can be added
+  WiFiMulti.addAP(ssid4, pw4); // multiple ssid/pw can be added  
+
+  for (int i = 0; i < 2; i++){
+    if (WiFiMulti.run() == WL_CONNECTED) {
+      wifiConnected = true;
+      drawTxtToDisplay("...Wifi....  ..connected.");
+      delay(1500);
+
+      drawTxtToDisplay("..Updating......RTC....");
+      delay(2000);
+
+      break;
+    }
+    if (WiFiMulti.run() != WL_CONNECTED) {
+      delay(200);
+      Serial.print(".");
+    }
+  }
+  
+  if (wifiConnected == true) {
+    Serial.println("\nConnected.");
+    timeClient.setTimeOffset(timezoneOffset);
+    timeClient.begin();
+    timeClient.update();
+    timeSet = true;
+
+  }else{
+    drawTxtToDisplay("Connection  failed");
+    delay(2000);
+     
+    drawTxtToDisplay("HOTSPOT =    PHONE");
+      delay(5000);
+      
+     drawTxtToDisplay("PASSWORD=  12345678");
+      delay(5000); 
+
+    timeSet = false;
+  }
+}
+
+void loop() { 
+  int btnPressed = -1;
+
+  btnPressed = ReadButtonState();
+
+  if (CurrentScreen == 0){
+    
+    if (btnPressed == selectBtn){
+      if (!timeAlterMode && wifiConnected == false){
+        timeAlterMode = true;
+      } else if (timeAlterPosition == 0){
+        timeAlterPosition++;
+      } else if (timeAlterPosition == 1){
+        timeAlterPosition = 0;
+        timeAlterMode = false;
+        //Set time here
+      }
+    } else if (btnPressed == upBtn){
+      if (timeAlterMode){
+        DateTime now = rtc.now();
+        if (timeAlterPosition == 0){
+          //Hour++
+          int currentHour = now.hour();
+          if (currentHour < 23 ){
+            currentHour++;
+          } else {
+            currentHour = 0;
+          }
+          rtc.adjust(DateTime(now.year(), now.month(), now.day(), currentHour, now.minute(), now.second()));
+        } else {
+          //Min++
+          int currentMin = now.minute();
+          if (currentMin < 59 ){
+            currentMin++;
+          } else {
+            currentMin = 0;
+          }
+          rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), currentMin, now.second()));
+        }
+      }
+    } else if (btnPressed == downBtn){
+      if (timeAlterMode){
+        DateTime now = rtc.now();
+         if (timeAlterPosition == 0){
+          //Hour--
+          int currentHour = now.hour();
+          if (currentHour > 1 ){
+            currentHour--;
+          } else {
+            currentHour = 23;
+          }
+          rtc.adjust(DateTime(now.year(), now.month(), now.day(), currentHour, now.minute(), now.second()));
+        } else {
+          //Min--
+          int currentMin = now.minute();
+          if (currentMin > 1 ){
+            currentMin--;
+          } else {
+            currentMin = 59;
+          }
+          rtc.adjust(DateTime(now.year(), now.month(), now.day(), now.hour(), currentMin, now.second()));
+        }
+      }
+    }
+    
+  }
+
+
+
+
+  char status;
+  double T, P, alt,seaLevelPressure;
+  bool success = false;
+  int tempC;
+  String strTempC = "";
+
+  status = bmp180.startTemperature();
+  if (status != 0) {
+    status = bmp180.getTemperature(T);
+    tempC = (int)T;
+    strTempC = String(tempC) + "*";
+    Serial.println(T);
+  }
+  if (status != 0) {
+    status = bmp180.startPressure(3);
+    if (status != 0) {
+      status = bmp180.getPressure(P, T);
+      if (status != 0) {
+        seaLevelPressure = bmp180.sealevel(P, alt);
+      }
+    }
+  }
+  
+  if (wifiConnected == true){
+
+    time_t rawtime = timeClient.getEpochTime();
+    struct tm * ti;
+
+    ti = localtime (&rawtime);
+    unsigned int year = ti->tm_year + 1900;
+
+    ti = localtime (&rawtime);
+    unsigned int month = ti->tm_mon + 1;
+
+    ti = localtime (&rawtime);
+    unsigned int day = ti->tm_mday;
+
+    unsigned int hour = timeClient.getHours();
+    unsigned int minute = timeClient.getMinutes();
+    unsigned int seconds = timeClient.getSeconds();
+
+    rtc.adjust(DateTime(year, month, day, hour, minute, seconds));
+    wifiConnected = false;  
+    timeClient.end(); 
+  }
+  
+  //Time string creation
+  DateTime now = rtc.now();
+  sprintf(t, "%02d:%02d:%02d %02d/%02d/%02d",  now.hour(), now.minute(), now.second(), now.day(), now.month(), now.year());  
+  unsigned long t = millis();
+  int second = now.second();
+  if (second != second_prev) colon_switch = !colon_switch;
+  String hour = (now.hour() < 10 ? "0" : "") + String(now.hour());
+  String min = (now.minute() < 10 ? "0" : "") + String(now.minute());
+  
+  if (timeAlterMode){//Flash selected number for altering
+    if (timeAlterPosition == 0){ //Hour
+      //TODO: Up/Down to change hour, Select btn cyles to mins flashing (timeAlterMode = true & timeAlterPosition = 1)
+      hour = (colon_switch ? hour : "    ");
+    } else { // Assume mins
+      //TODO: Up/Down to change min, Select btn cyles to normal screen with no flashing (timeAlterMode = false & timeAlterPosition = 0)
+      min = (colon_switch ? min : "    ");
+    }
+  }
+  
+  String fTime = hour + (colon_switch ? ":" : " ") + min;  
+
+  //Dsiplay Home screen
+  display.clearDisplay();
+  drawTimeToDisplay(fTime);
+  drawTempToDisplay(strTempC);
+
+  // draws hor & ver lines for seperation of other values
+  display.drawFastVLine(93,0,32,1);
+  display.drawFastHLine(93,15,37,1);
+  display.drawRect(0,0,128,32, 1);
+ 
+  second_prev = second;
+
+  int diff = millis() - t;
+   if (timeAlterMode){
+    delay(diff >= 0 ? (200 - (millis() - t)) : 0);
+   }
+   else {
+    delay(diff >= 0 ? (500 - (millis() - t)) : 0);
+   }
+
+  //only display done during loop, prevents flashing of ui
+  display.display();
+}
+
+void drawTxtToDisplay(String txt){
+  //21 char per line
+  display.setFont(&FreeMono9pt7b);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextWrap(true);
+  display.setTextColor(WHITE);
+  display.setCursor(1,13);
+  display.print(txt);
+  //Serial.println(txt);
+  display.display();
+}
+void drawTimeToDisplay(String txt){
+  display.setFont(&FreeSans18pt7b);
+  display.setTextSize(1);
+  display.setTextWrap(true);
+  display.setTextColor(WHITE);
+  display.setCursor(3,28);
+  //Serial.println(txt);
+  display.print(txt);
+
+}
+
+void drawTempToDisplay(String txt){
+  display.setFont(&FreeMono9pt7b);
+  display.setTextSize(1);
+  display.setTextWrap(false);
+  display.setTextColor(WHITE);
+  display.setCursor(95,12);
+  //Serial.println(txt);
+  display.print(txt);
+
+}
+
+int ReadButtonState(){
+  //consider enum
+  int btnPressed = -1; //1=up 2=down 3=select
+  buttonUpState = digitalRead(buttonPinUp);
+  buttonDownState = digitalRead(buttonPinDown);
+  buttonSelectState = digitalRead(buttonPinSelect);
+  if (buttonUpState == HIGH){
+    Serial.println("up = High");
+    digitalWrite(LED_BUILTIN, HIGH);
+
+  } else {
+    digitalWrite(LED_BUILTIN, LOW);
+    Serial.println("up = Low");
+    btnPressed = 1;
+    return btnPressed;
+  }
+  if (buttonDownState == HIGH){
+    Serial.println("down = High");
+    digitalWrite(LED_BUILTIN, HIGH);
+
+  } else {
+    digitalWrite(LED_BUILTIN, LOW);
+    Serial.println("down = Low");
+    btnPressed = 2;
+    return btnPressed;
+  }
+  if (buttonSelectState == HIGH){
+    Serial.println("select = High");
+    digitalWrite(LED_BUILTIN, HIGH);
+
+  } else {
+    digitalWrite(LED_BUILTIN, LOW);
+    Serial.println("select = Low");
+    btnPressed = 3;
+    return btnPressed;
+  }
+
+  return btnPressed;
+}
