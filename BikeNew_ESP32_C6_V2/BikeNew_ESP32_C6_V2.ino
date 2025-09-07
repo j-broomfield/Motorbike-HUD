@@ -19,7 +19,7 @@ float Po = 1015.0;
 #include <EEPROM.h> //This library allows reading and writing to the EEPROM
 #define OLED_RESET -1
 
-
+//Set wifi defaults here
 const char *ssid2 = "1"; // your wifi name
 const char *pw2   = "1";// your wifi password
 
@@ -29,6 +29,7 @@ const char *pw1   = "1";// your wifi password
 const char *ssid3 = "1"; // your wifi name
 const char *pw3   = "1";// your wifi password
 
+//Hotspot
 const char *ssid4 = "PHONE"; // your wifi name
 const char *pw4   = "12345678";// your wifi password
 
@@ -54,12 +55,14 @@ const char          *ntpServer  = "uk.pool.ntp.org"; // change it to local NTP s
 const unsigned long updateDelay = 900000;         // update time every 15 min
 const unsigned long retryDelay  = 5000;           // retry 5 sec later if time query failed
 const String        weekDays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+String fTime;
 
 unsigned long lastUpdatedTime = updateDelay * -1;
 unsigned int  second_prev = 0;
 bool          colon_switch = false;
 bool          wifiConnected = false;
 bool          timeSet;
+bool          forceNumberVisible;
 
 int           CurrentScreen = 0; //Home default
 
@@ -128,19 +131,17 @@ void setup() {
   display.clearDisplay();
 
   // init done
-  pinMode(buttonPinUp, INPUT);
-  pinMode(buttonPinDown, INPUT);
-  pinMode(buttonPinSelect, INPUT);
+  pinMode(buttonPinUp, INPUT_PULLUP);
+  pinMode(buttonPinDown, INPUT_PULLUP);
+  pinMode(buttonPinSelect, INPUT_PULLUP);
   pinMode(LED_BUILTIN, OUTPUT);
 
- 
+  //Bitmap on screen
   display.drawBitmap(0,1, Honda_2_bmp, HONDA_2_WIDTH, HONDA_2_HEIGHT, 1);
   display.display();
   delay(5000);
 
-  drawTxtToDisplay(" Connecting --to Wifi--");
-
-  //Wire.begin();
+  drawWifiTxtToDisplay(" Connecting --to Wifi--");
   rtc.begin();
   bool success = bmp180.begin();
 
@@ -148,20 +149,21 @@ void setup() {
     Serial.println("BMP180 init success");
   }
 
-
-  
+  //Saved Wifi logins
   WiFiMulti.addAP(ssid1, pw1); // multiple ssid/pw can be added
   WiFiMulti.addAP(ssid2, pw2); // multiple ssid/pw can be added
   WiFiMulti.addAP(ssid3, pw3); // multiple ssid/pw can be added
   WiFiMulti.addAP(ssid4, pw4); // multiple ssid/pw can be added  
 
+
+
   for (int i = 0; i < 2; i++){
     if (WiFiMulti.run() == WL_CONNECTED) {
       wifiConnected = true;
-      drawTxtToDisplay("...Wifi....  ..connected.");
+      drawWifiTxtToDisplay("...Wifi....  ..connected.");
       delay(1500);
 
-      drawTxtToDisplay("..Updating......RTC....");
+      drawWifiTxtToDisplay("..Updating......RTC....");
       delay(2000);
 
       break;
@@ -180,13 +182,13 @@ void setup() {
     timeSet = true;
 
   }else{
-    drawTxtToDisplay("Connection  failed");
+    drawWifiTxtToDisplay("Connection  failed");
     delay(2000);
      
-    drawTxtToDisplay("HOTSPOT =    PHONE");
+    drawWifiTxtToDisplay("HOTSPOT =    PHONE");
       delay(5000);
       
-     drawTxtToDisplay("PASSWORD=  12345678");
+     drawWifiTxtToDisplay("PASSWORD=  12345678");
       delay(5000); 
 
     timeSet = false;
@@ -194,12 +196,62 @@ void setup() {
 }
 
 void loop() { 
+  //Button monitoring and logic
+  forceNumberVisible = false;  
   int btnPressed = -1;
-
   btnPressed = ReadButtonState();
+  if (btnPressed != -1){
+    buttonLogic(btnPressed);
+  }
 
+//TODO turn into function rather tehn code in the loop
+  //Get temperature, pressure, altitude from bosch sensor
+  char status;
+  double T, P, alt,seaLevelPressure;
+  bool success = false;
+  int tempC;
+  String strTempC = "";
+
+  status = bmp180.startTemperature();
+  if (status != 0) {
+    status = bmp180.getTemperature(T);
+    tempC = (int)T;
+    strTempC = String(tempC) + " C";
+    Serial.println(T);
+  }
+  if (status != 0) {
+    status = bmp180.startPressure(3);
+    if (status != 0) {
+      status = bmp180.getPressure(P, T);
+      if (status != 0) {
+        seaLevelPressure = bmp180.sealevel(P, alt);
+      }
+    }
+  }
+
+//Start Screen1
+  //Dsiplay Home screen
+  display.clearDisplay();
+  //Time
+  String currentTime = getTime(forceNumberVisible);
+  drawTimeToDisplay(currentTime);
+
+  //Temp
+  drawTempToDisplay(strTempC);
+
+  // draws hor & ver lines for seperation of other values
+  display.drawFastVLine(93,0,32,1);
+  display.drawFastHLine(93,15,37,1);
+  display.drawRect(0,0,128,32, 1);
+//End Screen1
+
+  //only display done during loop, prevents flashing of ui
+  display.display();
+}
+
+void buttonLogic(int btnPressed){
   if (CurrentScreen == 0){
-    
+    forceNumberVisible = true;
     if (btnPressed == selectBtn){
       if (!timeAlterMode && wifiConnected == false){
         timeAlterMode = true;
@@ -210,8 +262,11 @@ void loop() {
         timeAlterMode = false;
         //Set time here
       }
+      delay(200);
     } else if (btnPressed == upBtn){
       if (timeAlterMode){
+        //Keep display updated
+        drawTimeToDisplay(fTime);
         DateTime now = rtc.now();
         if (timeAlterPosition == 0){
           //Hour++
@@ -235,6 +290,8 @@ void loop() {
       }
     } else if (btnPressed == downBtn){
       if (timeAlterMode){
+        //Keep display updated
+        drawTimeToDisplay(fTime);
         DateTime now = rtc.now();
          if (timeAlterPosition == 0){
           //Hour--
@@ -259,33 +316,13 @@ void loop() {
     }
     
   }
+  delay(200);
+}
 
+String getTime(bool forceNumbersVisible){
+  //Grabs time from internet or from RTC
 
-
-
-  char status;
-  double T, P, alt,seaLevelPressure;
-  bool success = false;
-  int tempC;
-  String strTempC = "";
-
-  status = bmp180.startTemperature();
-  if (status != 0) {
-    status = bmp180.getTemperature(T);
-    tempC = (int)T;
-    strTempC = String(tempC) + "*";
-    Serial.println(T);
-  }
-  if (status != 0) {
-    status = bmp180.startPressure(3);
-    if (status != 0) {
-      status = bmp180.getPressure(P, T);
-      if (status != 0) {
-        seaLevelPressure = bmp180.sealevel(P, alt);
-      }
-    }
-  }
-  
+  //Internet
   if (wifiConnected == true){
 
     time_t rawtime = timeClient.getEpochTime();
@@ -309,52 +346,36 @@ void loop() {
     timeClient.end(); 
   }
   
-  //Time string creation
+  //Time string creation from RTC
   DateTime now = rtc.now();
   sprintf(t, "%02d:%02d:%02d %02d/%02d/%02d",  now.hour(), now.minute(), now.second(), now.day(), now.month(), now.year());  
   unsigned long t = millis();
   int second = now.second();
   if (second != second_prev) colon_switch = !colon_switch;
+  
+  //Keep time visible for a second when changing the time
+  if (forceNumbersVisible){
+    colon_switch = true;
+  }
+
   String hour = (now.hour() < 10 ? "0" : "") + String(now.hour());
   String min = (now.minute() < 10 ? "0" : "") + String(now.minute());
   
-  if (timeAlterMode){//Flash selected number for altering
+  if (timeAlterMode && !forceNumbersVisible){//Flash selected number for altering
     if (timeAlterPosition == 0){ //Hour
-      //TODO: Up/Down to change hour, Select btn cyles to mins flashing (timeAlterMode = true & timeAlterPosition = 1)
       hour = (colon_switch ? hour : "    ");
     } else { // Assume mins
-      //TODO: Up/Down to change min, Select btn cyles to normal screen with no flashing (timeAlterMode = false & timeAlterPosition = 0)
       min = (colon_switch ? min : "    ");
     }
   }
   
-  String fTime = hour + (colon_switch ? ":" : " ") + min;  
-
-  //Dsiplay Home screen
-  display.clearDisplay();
-  drawTimeToDisplay(fTime);
-  drawTempToDisplay(strTempC);
-
-  // draws hor & ver lines for seperation of other values
-  display.drawFastVLine(93,0,32,1);
-  display.drawFastHLine(93,15,37,1);
-  display.drawRect(0,0,128,32, 1);
- 
+  fTime = hour + (colon_switch ? ":" : " ") + min;
   second_prev = second;
 
-  int diff = millis() - t;
-   if (timeAlterMode){
-    delay(diff >= 0 ? (200 - (millis() - t)) : 0);
-   }
-   else {
-    delay(diff >= 0 ? (500 - (millis() - t)) : 0);
-   }
-
-  //only display done during loop, prevents flashing of ui
-  display.display();
+  return fTime;
 }
 
-void drawTxtToDisplay(String txt){
+void drawWifiTxtToDisplay(String txt){
   //21 char per line
   display.setFont(&FreeMono9pt7b);
   display.clearDisplay();
@@ -378,14 +399,14 @@ void drawTimeToDisplay(String txt){
 }
 
 void drawTempToDisplay(String txt){
-  display.setFont(&FreeMono9pt7b);
+  //display.setFont(&FreeMono9pt7b);
+  display.setFont();
   display.setTextSize(1);
   display.setTextWrap(false);
   display.setTextColor(WHITE);
-  display.setCursor(95,12);
+  display.setCursor(98,4);
   //Serial.println(txt);
   display.print(txt);
-
 }
 
 int ReadButtonState(){
