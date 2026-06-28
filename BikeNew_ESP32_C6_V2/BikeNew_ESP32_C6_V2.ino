@@ -263,7 +263,6 @@ void buttonLogic(int btnPressed){
         timeAlterMode = false;
         //Set time here
       }
-      delay(200);
     } else if (btnPressed == upBtn){
       if (timeAlterMode){
         //Keep display updated
@@ -317,7 +316,6 @@ void buttonLogic(int btnPressed){
     }
     
   }
-  delay(200);
 }
 
 String getTime(bool forceNumbersVisible){
@@ -411,41 +409,38 @@ void drawTempToDisplay(String txt){
 }
 
 int ReadButtonState(){
-  //consider enum
-  int btnPressed = -1; //1=up 2=down 3=select
+  const unsigned long debounceDelay = 200;
+  static unsigned long lastButtonPressTime = 0;
+
+  if (millis() - lastButtonPressTime < debounceDelay) {
+    return -1;
+  }
+
   buttonUpState = digitalRead(buttonPinUp);
   buttonDownState = digitalRead(buttonPinDown);
   buttonSelectState = digitalRead(buttonPinSelect);
-  if (buttonUpState == HIGH){
-    Serial.println("up = High");
-    digitalWrite(LED_BUILTIN, HIGH);
 
-  } else {
-    digitalWrite(LED_BUILTIN, LOW);
-    Serial.println("up = Low");
-    btnPressed = 1;
-    return btnPressed;
-  }
-  if (buttonDownState == HIGH){
-    Serial.println("down = High");
+  if (buttonUpState == LOW){
+    Serial.println("up pressed");
     digitalWrite(LED_BUILTIN, HIGH);
-
-  } else {
-    digitalWrite(LED_BUILTIN, LOW);
-    Serial.println("down = Low");
-    btnPressed = 2;
-    return btnPressed;
-  }
-  if (buttonSelectState == HIGH){
-    Serial.println("select = High");
-    digitalWrite(LED_BUILTIN, HIGH);
-
-  } else {
-    digitalWrite(LED_BUILTIN, LOW);
-    Serial.println("select = Low");
-    btnPressed = 3;
-    return btnPressed;
+    lastButtonPressTime = millis();
+    return upBtn;
   }
 
-  return btnPressed;
+  if (buttonDownState == LOW){
+    Serial.println("down pressed");
+    digitalWrite(LED_BUILTIN, HIGH);
+    lastButtonPressTime = millis();
+    return downBtn;
+  }
+
+  if (buttonSelectState == LOW){
+    Serial.println("select pressed");
+    digitalWrite(LED_BUILTIN, HIGH);
+    lastButtonPressTime = millis();
+    return selectBtn;
+  }
+
+  digitalWrite(LED_BUILTIN, LOW);
+  return -1;
 }
