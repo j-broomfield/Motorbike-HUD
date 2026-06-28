@@ -6,7 +6,7 @@
 #include <SFE_BMP180.h>
 
 SFE_BMP180 bmp180;
-float alt = 155.0; // Altitude of current location in meters
+const double locationAltitudeMeters = 155.0; // Altitude of current location in meters
 float Po = 1015.0;
 #include <Adafruit_GFX.h>
 //#include <Adafruit_SSD1306.h> //OLED display library
@@ -207,7 +207,7 @@ void loop() {
 //TODO turn into function rather tehn code in the loop
   //Get temperature, pressure, altitude from bosch sensor
   char status;
-  double T, P, alt,seaLevelPressure;
+  double T, P, seaLevelPressure;
   bool success = false;
   int tempC;
   String strTempC = "";
@@ -219,12 +219,13 @@ void loop() {
     strTempC = String(tempC) + " C";
     Serial.println(T);
   }
+
   if (status != 0) {
     status = bmp180.startPressure(3);
     if (status != 0) {
       status = bmp180.getPressure(P, T);
       if (status != 0) {
-        seaLevelPressure = bmp180.sealevel(P, alt);
+        seaLevelPressure = bmp180.sealevel(P, locationAltitudeMeters);
       }
     }
   }
