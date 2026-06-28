@@ -51,6 +51,9 @@ const int buttonPinSelect = 17;
 int buttonSelectState = 0;
 int selectBtn = 3;
 
+const unsigned long selectHoldTime = 2000;
+bool selectHoldTriggered = false;
+
 const char          *ntpServer  = "uk.pool.ntp.org"; // change it to local NTP server if needed
 const unsigned long updateDelay = 900000;         // update time every 15 min
 const unsigned long retryDelay  = 5000;           // retry 5 sec later if time query failed
@@ -254,11 +257,12 @@ void buttonLogic(int btnPressed){
   if (CurrentScreen == 0){
     forceNumberVisible = true;
     if (btnPressed == selectBtn){
-      if (!timeAlterMode && wifiConnected == false){
+      if (!timeAlterMode && wifiConnected == false && selectHoldTriggered){
         timeAlterMode = true;
-      } else if (timeAlterPosition == 0){
+        timeAlterPosition = 0;
+      } else if (timeAlterMode && timeAlterPosition == 0){
         timeAlterPosition++;
-      } else if (timeAlterPosition == 1){
+      } else if (timeAlterMode && timeAlterPosition == 1){
         timeAlterPosition = 0;
         timeAlterMode = false;
         //Set time here
@@ -411,14 +415,56 @@ void drawTempToDisplay(String txt){
 int ReadButtonState(){
   const unsigned long debounceDelay = 200;
   static unsigned long lastButtonPressTime = 0;
-
-  if (millis() - lastButtonPressTime < debounceDelay) {
-    return -1;
-  }
+  static unsigned long selectPressedStartTime = 0;
+  static bool selectWasPressed = false;
 
   buttonUpState = digitalRead(buttonPinUp);
   buttonDownState = digitalRead(buttonPinDown);
   buttonSelectState = digitalRead(buttonPinSelect);
+
+  // Select button handling
+  if (buttonSelectState == LOW) {
+    if (!selectWasPressed) {
+      selectWasPressed = true;
+      selectPressedStartTime = millis();
+      selectHoldTriggered = false;
+    }
+
+    // Only require a long hold when NOT already in time alter mode
+    if (!timeAlterMode && !selectHoldTriggered && millis() - selectPressedStartTime >= selectHoldTime) {
+      selectHoldTriggered = true;
+      digitalWrite(LED_BUILTIN, HIGH);
+      Serial.println("select held");
+      lastButtonPressTime = millis();
+      return selectBtn;
+    }
+
+    return -1;
+  }
+
+  // Select button released
+  if (selectWasPressed) {
+    selectWasPressed = false;
+
+    // If it was a long hold, do not also count the release as a tap
+    if (selectHoldTriggered) {
+      selectHoldTriggered = false;
+      digitalWrite(LED_BUILTIN, LOW);
+      return -1;
+    }
+
+    // Once already editing, a normal tap should advance/set the time
+    if (timeAlterMode && millis() - lastButtonPressTime >= debounceDelay) {
+      Serial.println("select pressed");
+      digitalWrite(LED_BUILTIN, HIGH);
+      lastButtonPressTime = millis();
+      return selectBtn;
+    }
+  }
+
+  if (millis() - lastButtonPressTime < debounceDelay) {
+    return -1;
+  }
 
   if (buttonUpState == LOW){
     Serial.println("up pressed");
@@ -432,13 +478,6 @@ int ReadButtonState(){
     digitalWrite(LED_BUILTIN, HIGH);
     lastButtonPressTime = millis();
     return downBtn;
-  }
-
-  if (buttonSelectState == LOW){
-    Serial.println("select pressed");
-    digitalWrite(LED_BUILTIN, HIGH);
-    lastButtonPressTime = millis();
-    return selectBtn;
   }
 
   digitalWrite(LED_BUILTIN, LOW);
