@@ -296,7 +296,7 @@ void buttonLogic(int btnPressed){
          if (timeAlterPosition == 0){
           //Hour--
           int currentHour = now.hour();
-          if (currentHour > 1 ){
+          if (currentHour > 0 ){
             currentHour--;
           } else {
             currentHour = 23;
@@ -305,7 +305,7 @@ void buttonLogic(int btnPressed){
         } else {
           //Min--
           int currentMin = now.minute();
-          if (currentMin > 1 ){
+          if (currentMin > 0 ){
             currentMin--;
           } else {
             currentMin = 59;
