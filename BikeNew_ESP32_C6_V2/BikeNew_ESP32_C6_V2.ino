@@ -60,6 +60,14 @@ const unsigned long retryDelay  = 5000;           // retry 5 sec later if time q
 const String        weekDays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 String fTime;
 
+String weatherTrendIcon = "-";
+
+double previousSeaLevelPressure = 0;
+unsigned long lastPressureTrendCheck = 0;
+const unsigned long pressureTrendCheckDelay = 300000; // 5 minutes
+
+const double pressureTrendThreshold = 1.0; // hPa change needed to count as rising/falling
+
 unsigned long lastUpdatedTime = updateDelay * -1;
 unsigned int  second_prev = 0;
 bool          colon_switch = false;
@@ -229,6 +237,7 @@ void loop() {
       status = bmp180.getPressure(P, T);
       if (status != 0) {
         seaLevelPressure = bmp180.sealevel(P, locationAltitudeMeters);
+        updateWeatherTrend(seaLevelPressure);
       }
     }
   }
@@ -242,6 +251,12 @@ void loop() {
 
   //Temp
   drawTempToDisplay(strTempC);
+
+  //Weather trend
+  drawWeatherTrendToDisplay(weatherTrendIcon);
+
+  // draws hor & ver lines for seperation of other values
+  display.drawFastVLine(93,0,32,1);
 
   // draws hor & ver lines for seperation of other values
   display.drawFastVLine(93,0,32,1);
@@ -410,6 +425,39 @@ void drawTempToDisplay(String txt){
   display.setCursor(98,4);
   //Serial.println(txt);
   display.print(txt);
+}
+
+void drawWeatherTrendToDisplay(String txt){
+  display.setFont();
+  display.setTextSize(1);
+  display.setTextWrap(false);
+  display.setTextColor(WHITE);
+  display.setCursor(110,22);
+  display.print(txt);
+}
+
+void updateWeatherTrend(double seaLevelPressure){
+  if (previousSeaLevelPressure == 0) {
+    previousSeaLevelPressure = seaLevelPressure;
+    lastPressureTrendCheck = millis();
+    weatherTrendIcon = "-";
+    return;
+  }
+
+  if (millis() - lastPressureTrendCheck >= pressureTrendCheckDelay) {
+    double pressureChange = seaLevelPressure - previousSeaLevelPressure;
+
+    if (pressureChange > pressureTrendThreshold) {
+      weatherTrendIcon = "^";
+    } else if (pressureChange < -pressureTrendThreshold) {
+      weatherTrendIcon = "v";
+    } else {
+      weatherTrendIcon = "-";
+    }
+
+    previousSeaLevelPressure = seaLevelPressure;
+    lastPressureTrendCheck = millis();
+  }
 }
 
 int ReadButtonState(){
