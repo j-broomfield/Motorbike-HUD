@@ -89,6 +89,56 @@ Adafruit_SSD1305 display(128, 32, &Wire, OLED_RESET);
 
 #define HONDA_2_HEIGHT 32
 #define HONDA_2_WIDTH 128
+
+#define WEATHER_ICON_WIDTH 12
+#define WEATHER_ICON_HEIGHT 12
+#define WEATHER_ICON_X 105
+#define WEATHER_ICON_Y 17
+
+const unsigned char weather_sun_bmp [] PROGMEM = {
+  0x09, 0x00,
+  0x49, 0x20,
+  0x20, 0x40,
+  0x0F, 0x00,
+  0xD0, 0xB0,
+  0x10, 0x80,
+  0x10, 0x80,
+  0xD0, 0xB0,
+  0x0F, 0x00,
+  0x20, 0x40,
+  0x49, 0x20,
+  0x09, 0x00,
+};
+
+const unsigned char weather_cloud_bmp [] PROGMEM = {
+  0x00, 0x00,
+  0x00, 0x00,
+  0x00, 0x00,
+  0x01, 0xC0,
+  0x1A, 0x20,
+  0x64, 0x20,
+  0x80, 0x10,
+  0x80, 0x10,
+  0x7F, 0xE0,
+  0x00, 0x00,
+  0x00, 0x00,
+  0x00, 0x00,
+};
+
+const unsigned char weather_rain_bmp [] PROGMEM = {
+  0x00, 0x00,
+  0x01, 0xC0,
+  0x1A, 0x20,
+  0x64, 0x20,
+  0x80, 0x10,
+  0x80, 0x10,
+  0x7F, 0xE0,
+  0x00, 0x00,
+  0x24, 0x90,
+  0x49, 0x20,
+  0x92, 0x40,
+  0x00, 0x00,
+};
  
 const unsigned char Honda_2_bmp [] PROGMEM = {
 //static const unsigned char Honda_2_bmp[] u8x8_PROGMEM= {
@@ -428,12 +478,34 @@ void drawTempToDisplay(String txt){
 }
 
 void drawWeatherTrendToDisplay(String txt){
-  display.setFont();
-  display.setTextSize(1);
-  display.setTextWrap(false);
-  display.setTextColor(WHITE);
-  display.setCursor(110,22);
-  display.print(txt);
+  if (txt == "^") {
+    display.drawBitmap(
+      WEATHER_ICON_X,
+      WEATHER_ICON_Y,
+      weather_sun_bmp,
+      WEATHER_ICON_WIDTH,
+      WEATHER_ICON_HEIGHT,
+      1
+    );
+  } else if (txt == "v") {
+    display.drawBitmap(
+      WEATHER_ICON_X,
+      WEATHER_ICON_Y,
+      weather_rain_bmp,
+      WEATHER_ICON_WIDTH,
+      WEATHER_ICON_HEIGHT,
+      1
+    );
+  } else {
+    display.drawBitmap(
+      WEATHER_ICON_X,
+      WEATHER_ICON_Y,
+      weather_cloud_bmp,
+      WEATHER_ICON_WIDTH,
+      WEATHER_ICON_HEIGHT,
+      1
+    );
+  }
 }
 
 void updateWeatherTrend(double seaLevelPressure){
